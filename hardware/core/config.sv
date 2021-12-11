@@ -37,13 +37,13 @@
 `define NUM_CORES 1
 `define THREADS_PER_CORE 4
 `define L1D_WAYS 4
-`define L1D_SETS 64        // 16k
+`define L1D_SETS 64        // 16 KB
 `define L1I_WAYS 4
-`define L1I_SETS 64        // 16k
+`define L1I_SETS 64        // 16 KB
 `define L2_WAYS 8
-`define L2_SETS 256        // 128k
+`define L2_SETS 1024        // 128 KB
 `define AXI_DATA_WIDTH 32
-`define HAS_MMU 1
+`define HAS_MMU 0
 `define ITLB_ENTRIES 64
 `define DTLB_ENTRIES 64
 `define TLB_WAYS 4

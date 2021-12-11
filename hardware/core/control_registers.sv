@@ -87,7 +87,30 @@ module control_registers
     logic[NUM_INTERRUPTS - 1:0] int_trigger_type;
     logic[NUM_INTERRUPTS - 1:0] interrupt_req_prev;
     logic[NUM_INTERRUPTS - 1:0] interrupt_edge;
-
+    
+    //Synchronize Interrupts
+    parameter INTERRUPT_SYNC_STAGES = 2;
+    logic[NUM_INTERRUPTS - 1:0] interrupt_req_stg[INTERRUPT_SYNC_STAGES-1];
+    logic[NUM_INTERRUPTS - 1:0] interrupt_req_sync;
+    always_ff @(posedge clk, posedge reset)
+    begin
+        if(reset)
+        begin
+            interrupt_req_sync  <= 0;
+            interrupt_req_stg   <= '{default:0};
+        end
+        else
+        begin
+            interrupt_req_stg[0]    <= interrupt_req;
+            for (int i = 1; i < INTERRUPT_SYNC_STAGES-1; i++)
+            begin
+                interrupt_req_stg[i-1]   <= interrupt_req_stg[i];
+            end
+            interrupt_req_sync  <= interrupt_req_stg[INTERRUPT_SYNC_STAGES-1];
+        end
+    end
+    
+    
     assign cr_eret_subcycle = subcycle_saved[0];
     assign cr_eret_address = eret_address[0];
 
@@ -228,10 +251,10 @@ module control_registers
         if (reset)
             interrupt_req_prev <= '0;
         else
-            interrupt_req_prev <= interrupt_req;
+            interrupt_req_prev <= interrupt_req_sync;
     end
 
-    assign interrupt_edge = interrupt_req & ~interrupt_req_prev;
+    assign interrupt_edge = interrupt_req_sync & ~interrupt_req_prev;
 
     // Interrupt handling
     genvar thread_idx;
@@ -264,7 +287,7 @@ module control_registers
             // If the trigger type is 1 (level triggered), interrupt pending is
             // determined by level. Otherwise check interrupt_latch, which stores
             // if an edge has been detected.
-            assign interrupt_pending[thread_idx] = (int_trigger_type & interrupt_req)
+            assign interrupt_pending[thread_idx] = (int_trigger_type & interrupt_req_sync)
                 | (~int_trigger_type & interrupt_edge_latched[thread_idx]);
 
             // Output to pipeline indicates if any interrupts are pending for each

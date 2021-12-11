@@ -192,8 +192,8 @@ module l2_axi_bus_interface(
     assign axi_bus.m_wstrb = {(`AXI_DATA_WIDTH / 8){1'b1}};
 
     // ibid, Table A4-3/A4-4
-    assign axi_bus.m_awcache = 4'b1110;    // Allocate, Modifiable, Not-Bufferable
-    assign axi_bus.m_arcache = 4'b1110;
+    assign axi_bus.m_awcache = 4'b0010;    // Allocate, Modifiable, Not-Bufferable
+    assign axi_bus.m_arcache = 4'b0010;
 
     // Flatten array
     genvar load_buffer_idx;
@@ -362,7 +362,7 @@ module l2_axi_bus_interface(
             axi_bus.m_wvalid <= state_nxt == STATE_WRITE_TRANSFER;
             axi_bus.m_wlast <= state_nxt == STATE_WRITE_TRANSFER
                 && axi_bus.s_wready
-                && burst_offset_ff == BURST_OFFSET_WIDTH'(BURST_BEATS) - 2;
+                && burst_offset_ff == BURST_OFFSET_WIDTH'(BURST_BEATS - 2);
         end
     end
 
