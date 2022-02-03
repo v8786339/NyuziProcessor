@@ -25,7 +25,7 @@ import defines::*;
 
 module nyuzi
     #(parameter RESET_PC = 0,
-    parameter NUM_INTERRUPTS = 16
+    parameter NUM_INTERRUPTS = 16,
      //M_IO_AXI Parameters
     parameter  C_M_IO_TARGET_SLAVE_BASE_ADDR    = 32'h00000000,
     parameter integer C_M_IO_AXI_ADDR_WIDTH    = 32,
