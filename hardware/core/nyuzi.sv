@@ -25,14 +25,38 @@ import defines::*;
 
 module nyuzi
     #(parameter RESET_PC = 0,
-    parameter NUM_INTERRUPTS = 16)
+    parameter NUM_INTERRUPTS = 16
+     //M_IO_AXI Parameters
+    parameter  C_M_IO_TARGET_SLAVE_BASE_ADDR    = 32'h00000000,
+    parameter integer C_M_IO_AXI_ADDR_WIDTH    = 32,
+    parameter integer C_M_IO_AXI_DATA_WIDTH    = 32)
 
     (input                          clk,
     input                           reset,
     axi4_interface.master           axi_bus,
-    io_bus_interface.master         io_bus,
+    //io_bus_interface.master         io_bus,
     jtag_interface.target           jtag,
-    input [NUM_INTERRUPTS - 1:0]    interrupt_req);
+    input [NUM_INTERRUPTS - 1:0]    interrupt_req,
+     //M_IO_AXI
+    output wire [C_M_IO_AXI_ADDR_WIDTH-1 : 0] m_io_axi_awaddr,
+    output wire [2 : 0] m_io_axi_awprot,
+    output wire  m_io_axi_awvalid,
+    input wire  m_io_axi_awready,
+    output wire [C_M_IO_AXI_DATA_WIDTH-1 : 0] m_io_axi_wdata,
+    output wire [C_M_IO_AXI_DATA_WIDTH/8-1 : 0] m_io_axi_wstrb,
+    output wire  m_io_axi_wvalid,
+    input wire  m_io_axi_wready,
+    input wire [1 : 0] m_io_axi_bresp,
+    input wire  m_io_axi_bvalid,
+    output wire  m_io_axi_bready,
+    output wire [C_M_IO_AXI_ADDR_WIDTH-1 : 0] m_io_axi_araddr,
+    output wire [2 : 0] m_io_axi_arprot,
+    output wire  m_io_axi_arvalid,
+    input wire  m_io_axi_arready,
+    input wire [C_M_IO_AXI_DATA_WIDTH-1 : 0] m_io_axi_rdata,
+    input wire [1 : 0] m_io_axi_rresp,
+    input wire  m_io_axi_rvalid,
+    output wire  m_io_axi_rready);
 
     l2req_packet_t l2i_request[`NUM_CORES];
     logic[`NUM_CORES - 1:0] l2i_request_valid;
@@ -73,6 +97,107 @@ module nyuzi
         assert(`L1I_WAYS >= `THREADS_PER_CORE);
     end
 
+
+    //***THREAD ENABLE***
+    //INTERMEDIATE SIGNALS
+    logic m_io_axi_awready_io_interconnect;
+    logic m_io_axi_wready_io_interconnect;
+    logic[1 : 0] m_io_axi_bresp_io_interconnect;
+    logic m_io_axi_bvalid_io_interconnect;
+    logic m_io_axi_awvalid_io_interconnect;
+    logic m_io_axi_wvalid_io_interconnect;
+    logic m_io_axi_awvalid_out;
+    logic m_io_axi_wvalid_out;
+    parameter [0:0] IDLE = 1'b0, CONFIRM = 1'b1;
+    logic[0:0] axi_thread_ctrl_state;
+    
+    always_ff @(posedge clk)
+    begin
+        if(reset)
+        begin
+            axi_thread_ctrl_state <= IDLE;
+        end
+        else
+        begin
+            case(axi_thread_ctrl_state)
+                IDLE:
+                begin
+                    //If write in 0x5XXX Address Range
+                    if(m_io_axi_awvalid_io_interconnect & m_io_axi_wvalid_io_interconnect & m_io_axi_awaddr[14] & m_io_axi_awaddr[12])
+                    begin
+                        axi_thread_ctrl_state <= CONFIRM;
+                    end
+                end
+                CONFIRM:
+                begin
+                    if(m_io_axi_bready)
+                    begin
+                        axi_thread_ctrl_state <= IDLE;
+                    end
+                end
+                default:
+                begin
+                    axi_thread_ctrl_state <= IDLE;
+                end
+            endcase
+        end
+    end
+    
+    always_comb
+    begin
+        //Route Signals from ports
+        m_io_axi_bvalid_io_interconnect     = m_io_axi_bvalid;
+        m_io_axi_awready_io_interconnect    = m_io_axi_awready;
+        m_io_axi_wready_io_interconnect     = m_io_axi_wready;
+        m_io_axi_bresp_io_interconnect      = m_io_axi_bresp;
+        //Route Signals to Ports
+        m_io_axi_awvalid_out    = m_io_axi_awvalid_io_interconnect;
+        m_io_axi_wvalid_out     = m_io_axi_wvalid_io_interconnect;
+        case(axi_thread_ctrl_state)
+            IDLE:
+            begin
+                //Drive Signals locally
+                if(m_io_axi_awvalid_io_interconnect & m_io_axi_awaddr[14] & m_io_axi_awaddr[12])
+                begin
+                    //DEFAULT
+                    //To io_interconnect
+                    m_io_axi_bvalid_io_interconnect     = 0;
+                    m_io_axi_awready_io_interconnect    = 0;
+                    m_io_axi_wready_io_interconnect     = 0;
+                    m_io_axi_bresp_io_interconnect      = 0;
+                    //To Ports
+                        //The valid Signals are cut off the bus, in order to prevent an
+                        //external AXI Slave responding to the internally handled transaction
+                    m_io_axi_awvalid_out    = 0;
+                    m_io_axi_wvalid_out     = 0;
+                    
+                    if(m_io_axi_wvalid_io_interconnect)
+                    begin
+                        m_io_axi_awready_io_interconnect    = 1;
+                        m_io_axi_wready_io_interconnect     = 1;
+                    end
+                end
+            end
+            CONFIRM:
+            begin
+                //DEFAULT
+                //To io_interconnect
+                m_io_axi_bvalid_io_interconnect     = 1;
+                m_io_axi_awready_io_interconnect    = 0;
+                m_io_axi_wready_io_interconnect     = 0;
+                m_io_axi_bresp_io_interconnect      = 0;
+                //To Ports
+                    //The valid Signals are cut off the bus, in order to prevent an
+                    //external AXI Slave responding to the internally handled transaction
+                m_io_axi_awvalid_out    = 0;
+                m_io_axi_wvalid_out     = 0;
+            end
+        endcase
+    end
+    
+    assign m_io_axi_awvalid = m_io_axi_awvalid_out;
+    assign m_io_axi_wvalid  = m_io_axi_wvalid_out;
+
     // Thread enable
     always @*
     begin
@@ -97,7 +222,21 @@ module nyuzi
         .l2_perf_events(),
         .*);
 
-    io_interconnect io_interconnect(.*);
+     io_interconnect 
+        # (
+            .C_M_IO_TARGET_SLAVE_BASE_ADDR(C_M_IO_TARGET_SLAVE_BASE_ADDR),
+            .C_M_IO_AXI_ADDR_WIDTH(C_M_IO_AXI_ADDR_WIDTH),
+            .C_M_IO_AXI_DATA_WIDTH(C_M_IO_AXI_DATA_WIDTH)
+        )
+        io_interconnect(
+//        .io_bus(interconnect_io_bus),
+        .m_io_axi_awready(m_io_axi_awready_io_interconnect),
+        .m_io_axi_wready(m_io_axi_wready_io_interconnect),
+        .m_io_axi_bresp(m_io_axi_bresp_io_interconnect),
+        .m_io_axi_bvalid(m_io_axi_bvalid_io_interconnect),
+        .m_io_axi_awvalid(m_io_axi_awvalid_io_interconnect),
+        .m_io_axi_wvalid(m_io_axi_wvalid_io_interconnect),
+        .*);
 
     on_chip_debugger on_chip_debugger(
         .jtag(jtag),

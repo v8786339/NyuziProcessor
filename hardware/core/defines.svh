@@ -424,6 +424,13 @@ interface io_bus_interface;
     modport slave(input write_en, read_en, address, write_data, output read_data);
 endinterface
 
+`define CONNECT_IO_BUS(m,s) \
+        assign m.write_en = s.write_en;\
+        assign m.read_en = s.read_en;\
+        assign m.address = s.address;\
+        assign m.write_data = s.write_data;\
+        assign s.read_data = m.read_data;
+
 // AMBA AXI-4 bus interface
 // See table A10-1 and A10-3 for default values of optional signals not included here.
 interface axi4_interface;
